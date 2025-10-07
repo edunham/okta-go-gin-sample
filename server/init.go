@@ -16,14 +16,35 @@ func Init() {
 
 	godotenv.Load("./.okta.env")
 
+	initSessionStore()
+
+	issuer := os.Getenv("OKTA_OAUTH2_ISSUER")
+	clientID := os.Getenv("OKTA_OAUTH2_CLIENT_ID")
+	clientSecret := os.Getenv("OKTA_OAUTH2_CLIENT_SECRET")
+
+	if issuer == "" {
+		log.Fatal("OKTA_OAUTH2_ISSUER environment variable is required")
+	}
+	if clientID == "" {
+		log.Fatal("OKTA_OAUTH2_CLIENT_ID environment variable is required")
+	}
+	if clientSecret == "" {
+		log.Fatal("OKTA_OAUTH2_CLIENT_SECRET environment variable is required")
+	}
+
+	redirectURL := os.Getenv("OKTA_OAUTH2_REDIRECT_URL")
+	if redirectURL == "" {
+		redirectURL = "http://localhost:8080/authorization-code/callback"
+	}
+
 	oktaOauthConfig = &oauth2.Config{
-		RedirectURL:  "http://localhost:8080/authorization-code/callback",
-		ClientID:     os.Getenv("OKTA_OAUTH2_CLIENT_ID"),
-		ClientSecret: os.Getenv("OKTA_OAUTH2_CLIENT_SECRET"),
+		RedirectURL:  redirectURL,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Scopes:       []string{"openid", "profile", "email", "offline_access"},
 		Endpoint: oauth2.Endpoint{
-			AuthURL:   os.Getenv("OKTA_OAUTH2_ISSUER") + "/v1/authorize",
-			TokenURL:  os.Getenv("OKTA_OAUTH2_ISSUER") + "/v1/token",
+			AuthURL:   issuer + "/v1/authorize",
+			TokenURL:  issuer + "/v1/token",
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
