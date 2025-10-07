@@ -1,16 +1,20 @@
 package server
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"golang.org/x/oauth2"
+	"github.com/zitadel/oidc/v3/pkg/client/rp"
+	httphelper "github.com/zitadel/oidc/v3/pkg/http"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
-var oktaOauthConfig = &oauth2.Config{}
+var relyingParty rp.RelyingParty
 
 func Init() {
 
@@ -37,16 +41,32 @@ func Init() {
 		redirectURL = "http://localhost:8080/authorization-code/callback"
 	}
 
-	oktaOauthConfig = &oauth2.Config{
-		RedirectURL:  redirectURL,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Scopes:       []string{"openid", "profile", "email", "offline_access"},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:   issuer + "/v1/authorize",
-			TokenURL:  issuer + "/v1/token",
-			AuthStyle: oauth2.AuthStyleInParams,
-		},
+	// Initialize OIDC RelyingParty with PKCE support
+	sessionSecret := []byte(os.Getenv("SESSION_SECRET"))
+	// Cookie handler needs 32-byte keys for encryption
+	// Use first 32 bytes for hash key and last 32 bytes for encryption key
+	hashKey := sessionSecret[:32]
+	encryptKey := sessionSecret[:32] // In production, use different keys
+
+	cookieHandler := httphelper.NewCookieHandler(
+		hashKey,
+		encryptKey,
+		httphelper.WithSameSite(http.SameSiteLaxMode),
+		httphelper.WithMaxAge(3600),
+	)
+
+	var err error
+	relyingParty, err = rp.NewRelyingPartyOIDC(
+		context.Background(),
+		issuer,
+		clientID,
+		clientSecret,
+		redirectURL,
+		[]string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail, oidc.ScopeOfflineAccess},
+		rp.WithPKCE(cookieHandler),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create OIDC relying party: %v", err)
 	}
 
 	port := os.Getenv("PORT")
